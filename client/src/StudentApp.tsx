@@ -5,6 +5,7 @@ import { StudentDashboard } from './components/StudentDashboard';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import { supabase } from './utils/supabase/client';
+import { reactivateIfNeeded } from './services/account';
 import { projectId, publicAnonKey } from './utils/supabase/info';
 
 interface StudentAppProps {
@@ -27,6 +28,7 @@ export function StudentApp({ onBackToLanding }: StudentAppProps) {
       const { data: { session }, error } = await supabase.auth.getSession();
       
       if (session && session.access_token) {
+        if (!(await reactivateIfNeeded(session))) return;
         // Check role from metadata first
         const userRole = session.user?.user_metadata?.role;
         console.log('Existing session found, user role:', userRole);
@@ -89,6 +91,7 @@ export function StudentApp({ onBackToLanding }: StudentAppProps) {
       console.log('Student login successful, checking if user is a student...');
 
       if (data.session) {
+        if (!(await reactivateIfNeeded(data.session))) throw new Error('Account reactivation cancelled');
         // Check the user's role from metadata
         const userRole = data.session.user?.user_metadata?.role;
         console.log('User role from metadata:', userRole);

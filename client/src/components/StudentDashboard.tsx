@@ -278,7 +278,7 @@ export function StudentDashboard({
 
   const markNotificationAsRead = async (notificationId: any) => {
     try {
-      await fetch(`/make-server-2fad19e1/student/notifications/read`, {
+      const response = await fetch(`/make-server-2fad19e1/student/notifications/read`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -286,6 +286,10 @@ export function StudentDashboard({
         },
         body: JSON.stringify({ notificationId }),
       });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to mark notification read (${response.status})`);
+      }
 
       setNotifications((prev) =>
         prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)),
@@ -293,6 +297,7 @@ export function StudentDashboard({
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (error) {
       console.error("Error marking notification as read:", error);
+      toast.error("Failed to mark notification as read");
     }
   };
 

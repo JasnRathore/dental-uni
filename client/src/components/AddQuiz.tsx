@@ -13,9 +13,10 @@ interface AddQuizProps {
   onBack: () => void;
   onAddQuiz: (quiz: any) => void;
   students: any[];
+  accessToken: string;
 }
 
-export function AddQuiz({ classData, onBack, onAddQuiz, students }: AddQuizProps) {
+export function AddQuiz({ classData, onBack, onAddQuiz, students, accessToken }: AddQuizProps) {
   const [quizData, setQuizData] = useState({
     title: '',
     description: '',
@@ -68,7 +69,7 @@ export function AddQuiz({ classData, onBack, onAddQuiz, students }: AddQuizProps
     ));
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     // Validation
@@ -91,47 +92,33 @@ export function AddQuiz({ classData, onBack, onAddQuiz, students }: AddQuizProps
       }
     }
 
-    const newQuiz = {
-      id: `quiz-${Date.now()}`,
-      classId: classData.id,
-      className: classData.name,
-      type: 'quiz',
-      ...quizData,
-      duration: parseInt(quizData.duration),
-      totalPoints: parseInt(quizData.totalPoints),
-      maxPoints: parseInt(quizData.totalPoints), // Add maxPoints for consistency
-      questions: questions,
-      createdAt: new Date().toISOString(),
-      status: 'active'
-    };
-
-    // Get all students enrolled in this class
-    const enrolledStudents = students.filter(student => student.classId === classData.id);
-    
-    console.log('Assigning quiz to students in class:', classData.id);
-    console.log('Enrolled students:', enrolledStudents.length);
-
-    // Assign quiz to each student
-    enrolledStudents.forEach(student => {
-      const studentTasksKey = `student_tasks:${student.email}`;
-      const existingTasks = JSON.parse(localStorage.getItem(studentTasksKey) || '[]');
-      
-      // Add the new quiz to student's task list
-      const studentQuiz = {
-        ...newQuiz,
-        completed: false,
-        started: false,
-        submittedAt: null
-      };
-      
-      existingTasks.push(studentQuiz);
-      localStorage.setItem(studentTasksKey, JSON.stringify(existingTasks));
-      
-      console.log(`Assigned quiz to ${student.email}:`, studentTasksKey);
-    });
-
-    onAddQuiz(newQuiz);
-    toast.success(`Quiz "${quizData.title}" assigned to ${enrolledStudents.length} student(s) in ${classData.name}`);
+    try {
+      const response = await fetch('/make-server-2fad19e1/teacher/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: ['Bearer', accessToken].join(' '),
+        },
+        body: JSON.stringify({
+          ...quizData,
+          duration: parseInt(quizData.duration, 10),
+          totalPoints: parseInt(quizData.totalPoints, 10),
+          maxPoints: parseInt(quizData.totalPoints, 10),
+          classId: classData.id,
+          className: classData.name,
+          questions,
+          type: 'quiz',
+          status: 'active',
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Quiz creation failed (${response.status})`);
+      onAddQuiz(data);
+      toast.success(`Quiz "${quizData.title}" assigned to ${data.assignedCount || 0} student(s) in ${classData.name}`);
+    } catch (error: any) {
+      console.error('Error creating quiz:', error);
+      toast.error(error.message || 'Failed to create quiz');
+    }
   };
 
   return (

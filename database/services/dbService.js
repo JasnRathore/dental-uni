@@ -23,6 +23,12 @@ const kvSet = async (key, value) => {
   if (error) throw new Error(error.message);
 };
 
+const kvDelete = async (key) => {
+  const supabase = getSupabaseClient(true);
+  const { error } = await supabase.from(KV_TABLE).delete().eq('key', key);
+  if (error) throw new Error(error.message);
+};
+
 const kvGetByPrefix = async (prefix) => {
   const supabase = getSupabaseClient(true);
   const { data, error } = await supabase.from(KV_TABLE).select('key, value').like('key', prefix + '%');
@@ -34,5 +40,6 @@ module.exports = {
   getSupabaseClient,
   kvGet,
   kvSet,
+  kvDelete,
   kvGetByPrefix
 };

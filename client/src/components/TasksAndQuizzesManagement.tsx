@@ -97,7 +97,7 @@ interface TasksAndQuizzesManagementProps {
   classes: any[];
   students: any[];
   onEditTask: (task: any) => void;
-  onDeleteTask: (taskId: any) => void;
+  onDeleteTask: (taskId: any) => Promise<boolean>;
   projectId: string;
   accessToken: string;
 }
@@ -119,6 +119,16 @@ export function TasksAndQuizzesManagement({
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [isStudentDialogOpen, setIsStudentDialogOpen] = useState(false);
   const [studentGrades, setStudentGrades] = useState({}); // Store grades: { studentEmail: grade }
+  const [deletingTaskId, setDeletingTaskId] = useState<any>(null);
+
+  const handleDeleteTask = async (taskId: any) => {
+    setDeletingTaskId(taskId);
+    try {
+      await onDeleteTask(taskId);
+    } finally {
+      setDeletingTaskId(null);
+    }
+  };
 
   // Validate required props
   useEffect(() => {
@@ -275,10 +285,15 @@ export function TasksAndQuizzesManagement({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onDeleteTask(task.id)}
+                onClick={() => handleDeleteTask(task.id)}
+                disabled={deletingTaskId !== null}
                 className="hover:bg-red-50 hover:border-red-300 text-red-600"
               >
-                <Trash2 className="w-4 h-4" />
+                {deletingTaskId === task.id ? (
+                  <span className="text-xs">Deleting...</span>
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
               </Button>
             </div>
           </div>

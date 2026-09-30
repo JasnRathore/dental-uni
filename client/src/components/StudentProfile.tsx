@@ -29,9 +29,10 @@ interface StudentProfileProps {
   accessToken: string;
   projectId: string;
   onUpdate: (data: any) => void;
+  isTeacherEditing?: boolean;
 }
 
-export function StudentProfile({ student, onBack, accessToken, projectId, onUpdate }: StudentProfileProps) {
+export function StudentProfile({ student, onBack, accessToken, projectId, onUpdate, isTeacherEditing = false }: StudentProfileProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const [profileData, setProfileData] = useState({
     name: student?.name || "",
@@ -55,9 +56,11 @@ export function StudentProfile({ student, onBack, accessToken, projectId, onUpda
     setIsUpdating(true);
     try {
       const response = await fetch(
-        `/make-server-2fad19e1/student/profile/update`,
+        isTeacherEditing
+          ? `/make-server-2fad19e1/teacher/students/${encodeURIComponent(student.id)}`
+          : `/make-server-2fad19e1/student/profile/update`,
         {
-          method: "POST",
+          method: isTeacherEditing ? "PUT" : "POST",
           headers: {
             Authorization: `Bearer ${accessToken}`,
             "Content-Type": "application/json",

@@ -110,9 +110,9 @@ export function AddDailyTask({ selectedClass, classes = [], students = [], onBac
       const result = await response.json();
       const createdTask = result.task || result;
 
-      const assignedCount = activeClass
+      const assignedCount = result.assignedCount ?? (activeClass
         ? students.filter((s: any) => s.classId === activeClass.id).length
-        : students.length;
+        : students.length);
 
       const assignMsg = activeClass
         ? `Task created and assigned to ${assignedCount} student(s) in ${activeClass.name}!`

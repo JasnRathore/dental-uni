@@ -10,12 +10,13 @@ import { projectId } from '../utils/supabase/info';
 
 interface StudentsListProps {
   students: any[];
+  accessToken: string;
   onSelectStudent: (student: any) => void;
   classes: any[];
   onRefresh?: () => void;
 }
 
-export function StudentsList({ students, onSelectStudent, classes, onRefresh }: StudentsListProps) {
+export function StudentsList({ students, accessToken, onSelectStudent, classes, onRefresh }: StudentsListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [studentsWithData, setStudentsWithData] = useState<any[]>([]);
@@ -24,14 +25,7 @@ export function StudentsList({ students, onSelectStudent, classes, onRefresh }: 
   // Fetch streak and task data for all students
   useEffect(() => {
     const fetchStudentData = async () => {
-      // Use studentsWithData if already populated to avoid flickering, 
-      // but only if it matches current students length (simple heuristic)
-      if (studentsWithData.length === students.length && students.length > 0) {
-        return;
-      }
-
       setIsLoading(true);
-      const accessToken = localStorage.getItem('access_token');
       if (!accessToken) {
         setStudentsWithData(students);
         setIsLoading(false);
@@ -96,7 +90,7 @@ export function StudentsList({ students, onSelectStudent, classes, onRefresh }: 
     } else {
       setStudentsWithData([]);
     }
-  }, [students]);
+  }, [students, accessToken]);
 
   const filteredStudents = studentsWithData.filter((student: any) =>
     student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

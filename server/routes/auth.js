@@ -4,5 +4,6 @@ const authController = require('../controllers/authController');
 
 router.post('/signup', authController.signup);
 router.post('/student/signup', authController.studentSignup);
+router.post('/account/reactivate', authController.reactivateAccount);
 
 module.exports = router;

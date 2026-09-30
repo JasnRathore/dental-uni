@@ -54,6 +54,7 @@ const letterGrades = [
 
 export function MarksManagement({ students, classes, accessToken, projectId }: { students: any[]; classes: any[]; accessToken: string; projectId: string }) {
   const [grades, setGrades] = useState<any[]>([]);
+  const [isLoadingGrades, setIsLoadingGrades] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [selectedClass, setSelectedClass] = useState('all');
@@ -70,23 +71,26 @@ export function MarksManagement({ students, classes, accessToken, projectId }: {
     feedback: ''
   });
 
-  // Load grades from localStorage on mount
   useEffect(() => {
-    const savedGrades = localStorage.getItem('dental_college_grades');
-    if (savedGrades) {
-      setGrades(JSON.parse(savedGrades));
-    }
-  }, []);
-
-  // Save grades to localStorage and backend whenever they change
-  useEffect(() => {
-    if (grades.length >= 0) {
-      localStorage.setItem('dental_college_grades', JSON.stringify(grades));
-      
-      // Also sync to backend
-      syncGradesToBackend();
-    }
-  }, [grades]);
+    const loadGrades = async () => {
+      setIsLoadingGrades(true);
+      try {
+        const response = await fetch('/make-server-2fad19e1/teacher/data', {
+          headers: { Authorization: ['Bearer', accessToken].join(' ') }
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `Failed to load grades (${response.status})`);
+        setGrades(Array.isArray(data.grades) ? data.grades : []);
+      } catch (error: any) {
+        console.error('Error loading grades:', error);
+        toast.error(error.message || 'Failed to load grades');
+      } finally {
+        setIsLoadingGrades(false);
+      }
+    };
+    if (accessToken && projectId) loadGrades();
+    else setIsLoadingGrades(false);
+  }, [accessToken, projectId]);
 
   const syncGradesToBackend = async () => {
     if (!accessToken || !projectId) return;
@@ -112,8 +116,22 @@ export function MarksManagement({ students, classes, accessToken, projectId }: {
     }
   };
 
+  const persistGrades = async (nextGrades: any[]) => {
+    const response = await fetch('/make-server-2fad19e1/teacher/grades', {
+      method: 'POST',
+      headers: {
+        Authorization: ['Bearer', accessToken].join(' '),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ grades: nextGrades }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Failed to save grades (${response.status})`);
+    return Array.isArray(data.grades) ? data.grades : nextGrades;
+  };
+
   const filteredGrades = grades.filter((grade: any) => {
-    const student = students.find((s: any) => s.id === grade.studentId);
+    const student = students.find((s: any) => String(s.id) === String(grade.studentId));
     if (!student) return false;
 
     const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -124,22 +142,29 @@ export function MarksManagement({ students, classes, accessToken, projectId }: {
     return matchesSearch && matchesSubject && matchesClass;
   });
 
-  const handleUpdateGrade = (gradeId: any, updatedData: any) => {
-    setGrades((grades: any[]) => grades.map((grade: any) => 
+  const handleUpdateGrade = async (gradeId: any, updatedData: any) => {
+    const nextGrades = grades.map((grade: any) =>
       grade.id === gradeId ? { ...grade, ...updatedData } : grade
-    ));
-    setEditingGrade(null);
-    setIsEditDialogOpen(false);
-    toast.success('Grade updated successfully!');
+    );
+    try {
+      const savedGrades = await persistGrades(nextGrades);
+      setGrades(savedGrades);
+      setEditingGrade(null);
+      setIsEditDialogOpen(false);
+      toast.success('Grade updated successfully!');
+    } catch (error: any) {
+      console.error('Error updating grade:', error);
+      toast.error(error.message || 'Failed to update grade');
+    }
   };
 
-  const handleAddGrade = () => {
+  const handleAddGrade = async () => {
     if (!newGrade.studentId || !newGrade.subject || !newGrade.assignment || !newGrade.grade) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    const student = students.find((s: any) => s.id === parseInt(newGrade.studentId));
+    const student = students.find((s: any) => String(s.id) === String(newGrade.studentId));
     if (!student) {
       toast.error('Student not found');
       return;
@@ -150,7 +175,7 @@ export function MarksManagement({ students, classes, accessToken, projectId }: {
     
     const grade = {
       id: Date.now(),
-      studentId: parseInt(newGrade.studentId),
+      studentId: student.id,
       studentName: student.name,
       studentEmail: student.email, // Store student email for backend matching
       classId: newGrade.classId || student.classId,
@@ -163,7 +188,14 @@ export function MarksManagement({ students, classes, accessToken, projectId }: {
       feedback: newGrade.feedback
     };
 
-    setGrades((prev: any[]) => [grade, ...prev]);
+    try {
+      const savedGrades = await persistGrades([grade, ...grades]);
+      setGrades(savedGrades);
+    } catch (error: any) {
+      console.error('Error adding grade:', error);
+      toast.error(error.message || 'Failed to save grade');
+      return;
+    }
     setNewGrade({
       studentId: '',
       classId: '',

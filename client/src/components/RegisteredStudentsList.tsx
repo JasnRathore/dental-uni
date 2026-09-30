@@ -49,13 +49,13 @@ export function RegisteredStudentsList({ students, onBack, onSelectStudent, acce
               'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ studentEmails })
+            body: JSON.stringify({ emails: studentEmails })
           }
         );
 
         if (response.ok) {
           const result = await response.json();
-          const studentsData = result.studentsData || {};
+          const studentsData = result.students || result.studentsData || {};
 
           const studentsWithEnhancedData = students.map(student => ({
             ...student,

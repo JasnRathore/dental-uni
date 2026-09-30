@@ -13,9 +13,10 @@ interface AddTaskProps {
   onBack: () => void;
   onAddTask: (task: any) => void;
   students: any[];
+  accessToken: string;
 }
 
-export function AddTask({ classData, onBack, onAddTask, students }: AddTaskProps) {
+export function AddTask({ classData, onBack, onAddTask, students, accessToken }: AddTaskProps) {
   const [taskData, setTaskData] = useState({
     title: '',
     description: '',
@@ -25,7 +26,7 @@ export function AddTask({ classData, onBack, onAddTask, students }: AddTaskProps
     maxPoints: ''
   });
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     if (!taskData.title || !taskData.description || !taskData.dueDate || !taskData.maxPoints) {
@@ -33,44 +34,31 @@ export function AddTask({ classData, onBack, onAddTask, students }: AddTaskProps
       return;
     }
 
-    const newTask = {
-      id: `task-${Date.now()}`,
-      classId: classData.id,
-      className: classData.name,
-      ...taskData,
-      maxPoints: parseInt(taskData.maxPoints),
-      createdAt: new Date().toISOString(),
-      status: 'active',
-      type: 'task' // Mark as task (not quiz)
-    };
-
-    // Get all students enrolled in this class
-    const enrolledStudents = students.filter((student: any) => student.classId === classData.id);
-    
-    console.log('Assigning task to students in class:', classData.id);
-    console.log('Enrolled students:', enrolledStudents.length);
-
-    // Assign task to each student
-    enrolledStudents.forEach((student: any) => {
-      const studentTasksKey = `student_tasks:${student.email}`;
-      const existingTasks = JSON.parse(localStorage.getItem(studentTasksKey) || '[]');
-      
-      // Add the new task to student's task list
-      const studentTask = {
-        ...newTask,
-        completed: false,
-        started: false,
-        submittedAt: null
-      };
-      
-      existingTasks.push(studentTask);
-      localStorage.setItem(studentTasksKey, JSON.stringify(existingTasks));
-      
-      console.log(`Assigned task to ${student.email}:`, studentTasksKey);
-    });
-
-    onAddTask(newTask);
-    toast.success(`Quest "${taskData.title}" assigned to ${enrolledStudents.length} student(s) in ${classData.name}!`);
+    try {
+      const response = await fetch('/make-server-2fad19e1/teacher/tasks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: ['Bearer', accessToken].join(' '),
+        },
+        body: JSON.stringify({
+          ...taskData,
+          dueDate: taskData.dueDate,
+          maxPoints: parseInt(taskData.maxPoints, 10),
+          classId: classData.id,
+          className: classData.name,
+          status: 'active',
+          type: 'task',
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Task creation failed (${response.status})`);
+      onAddTask(data);
+      toast.success(`Quest "${taskData.title}" assigned to ${data.assignedCount || 0} student(s) in ${classData.name}!`);
+    } catch (error: any) {
+      console.error('Error creating task:', error);
+      toast.error(error.message || 'Failed to create task');
+    }
   };
 
   return (

@@ -65,7 +65,25 @@ const studentSignup = async (req, res) => {
   }
 };
 
+const reactivateAccount = async (req, res) => {
+  try {
+    const accessToken = req.headers.authorization?.split(' ')[1];
+    if (!accessToken) return res.status(401).json({ error: 'Unauthorized' });
+    const supabase = getSupabaseClient(true);
+    const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+    if (error || !user) return res.status(401).json({ error: 'Unauthorized' });
+    const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
+      app_metadata: { ...user.app_metadata, accountDisabled: false },
+    });
+    if (updateError) return res.status(400).json({ error: updateError.message });
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   signup,
-  studentSignup
+  studentSignup,
+  reactivateAccount
 };

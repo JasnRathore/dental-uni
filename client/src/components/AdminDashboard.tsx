@@ -52,6 +52,7 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
   const [students, setStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
   const [registeredStudents, setRegisteredStudents] = useState<any[]>([]);
 
   // Load data from backend on mount
@@ -64,39 +65,21 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
 
   // Save students to backend whenever they change
   useEffect(() => {
-    if (!isLoadingData && students.length >= 0) {
+    if (hasLoadedData) {
       saveStudents();
     }
-  }, [students]);
+  }, [students, hasLoadedData]);
 
   // Save classes to backend whenever they change
   useEffect(() => {
-    if (!isLoadingData && classes.length >= 0) {
+    if (hasLoadedData) {
       saveClasses();
     }
-  }, [classes]);
-
-  // Save tasks to backend whenever they change
-  useEffect(() => {
-    if (!isLoadingData && tasks.length >= 0) {
-      saveTasks(tasks);
-    }
-  }, [tasks]);
+  }, [classes, hasLoadedData]);
 
   const loadTeacherData = async () => {
+    setHasLoadedData(false);
     try {
-      // Load tasks from localStorage first
-      const savedTasks = localStorage.getItem('dental_college_tasks');
-      if (savedTasks) {
-        try {
-          const parsedTasks = JSON.parse(savedTasks);
-          console.log('Loaded tasks from localStorage:', parsedTasks.length);
-          setTasks(parsedTasks);
-        } catch (e) {
-          console.error('Error parsing tasks from localStorage:', e);
-        }
-      }
-
       const response = await fetch(`/make-server-2fad19e1/teacher/data`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
@@ -105,19 +88,16 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
 
       if (response.ok) {
         const data = await response.json();
-        // Filter out any dummy/default students that may have been accidentally saved
-        const realStudents = (data.students || []).filter((s: any) =>
-          s?.email && !s.email.endsWith('@dentalcollege.edu')
-        );
-        setStudents(realStudents);
-        setClasses(data.classes || getDefaultClasses());
-        // Only update tasks from server if localStorage was empty
-        if (!savedTasks && data.tasks) {
-          setTasks(data.tasks);
-        }
+        setStudents(data.students || []);
+        setClasses(data.classes || []);
+        setTasks(data.tasks || []);
+        setHasLoadedData(true);
       } else {
+        const data = await response.json().catch(() => ({}));
+        toast.error(data.error || `Failed to load teacher data (${response.status})`);
         setStudents([]);
-        setClasses(getDefaultClasses());
+        setClasses([]);
+        setTasks([]);
       }
     } catch (error) {
       console.error('Error loading teacher data:', error);
@@ -161,7 +141,7 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
 
   const saveStudents = async () => {
     try {
-      await fetch(`/make-server-2fad19e1/teacher/students`, {
+      const response = await fetch(`/make-server-2fad19e1/teacher/students`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -169,14 +149,16 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
         },
         body: JSON.stringify({ students })
       });
+      if (!response.ok) throw new Error(`Save students failed (${response.status})`);
     } catch (error) {
       console.error('Error saving students:', error);
+      toast.error('Failed to save students');
     }
   };
 
   const saveClasses = async () => {
     try {
-      await fetch(`/make-server-2fad19e1/teacher/classes`, {
+      const response = await fetch(`/make-server-2fad19e1/teacher/classes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -184,8 +166,10 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
         },
         body: JSON.stringify({ classes })
       });
+      if (!response.ok) throw new Error(`Save classes failed (${response.status})`);
     } catch (error) {
       console.error('Error saving classes:', error);
+      toast.error('Failed to save classes');
     }
   };
 
@@ -344,13 +328,7 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
   };
 
   const handleAddTask = (newTask: any) => {
-    const updatedTasks = [...tasks, newTask];
-    setTasks(updatedTasks);
-    
-    // Save to backend
-    saveTasks(updatedTasks);
-    console.log('Task created and saved to backend:', newTask.title);
-    
+    setTasks(prev => [newTask, ...prev]);
     setActiveView('class-view');
   };
 
@@ -359,18 +337,44 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
     setActiveView('edit-task');
   };
 
-  const handleSaveTask = (updatedTask: any) => {
-    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-    // Save to backend
-    saveTasks(tasks.map(t => t.id === updatedTask.id ? updatedTask : t));
-    setActiveView('tasks-quizzes');
-    toast.success('Task/Quiz updated successfully');
+  const handleSaveTask = async (updatedTask: any) => {
+    try {
+      const response = await fetch(`/make-server-2fad19e1/teacher/tasks/${encodeURIComponent(updatedTask.id)}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: ['Bearer', accessToken].join(' '),
+        },
+        body: JSON.stringify(updatedTask)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Update failed (${response.status})`);
+      setTasks(prev => prev.map(task => task.id === updatedTask.id ? data.task : task));
+      setActiveView('tasks-quizzes');
+      toast.success('Task/Quiz updated successfully');
+    } catch (error: any) {
+      console.error('Error updating task:', error);
+      toast.error(error.message || 'Failed to update task');
+    }
   };
 
-  const handleDeleteTask = (taskId: any) => {
-    if (confirm('Are you sure you want to delete this task/quiz?')) {
-      setTasks(prev => prev.filter(t => t.id !== taskId));
+  const handleDeleteTask = async (taskId: any): Promise<boolean> => {
+    if (!confirm('Are you sure you want to delete this task/quiz?')) return false;
+    try {
+      const response = await fetch(`/make-server-2fad19e1/teacher/tasks/${encodeURIComponent(taskId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: ['Bearer', accessToken].join(' ') }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Delete failed (${response.status})`);
+      if (data.success !== true) throw new Error('The server did not confirm task deletion');
+      setTasks(prev => prev.filter(task => task.id !== taskId));
       toast.success('Task/Quiz deleted successfully');
+      return true;
+    } catch (error: any) {
+      console.error('Error deleting task:', error);
+      toast.error(error.message || 'Failed to delete task');
+      return false;
     }
   };
 
@@ -394,15 +398,14 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
           ...prev,
           ...data.profile
         }));
-        toast.success('Profile updated successfully!');
       } else {
         const errorData = await response.json();
         console.error('Failed to update profile:', errorData);
-        toast.error('Failed to update profile: ' + (errorData.error || 'Unknown error'));
+        throw new Error(errorData.error || 'Failed to update profile');
       }
     } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error('Failed to update profile');
+      throw error;
     }
   };
 
@@ -452,16 +455,29 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
     }
   };
 
-  const handleDeleteClass = (classId: any) => {
+  const handleDeleteClass = async (classId: any) => {
     // Check if class has students
-    const classStudents = students.filter(student => student.classId === classId);
+    const classStudents = [
+      ...students,
+      ...registeredStudents.filter(student => student.isAssigned),
+    ].filter(student => student.classId === classId);
     if (classStudents.length > 0) {
       toast.error('Cannot delete class with enrolled students');
       return;
     }
-    
-    setClasses(prev => prev.filter(cls => cls.id !== classId));
-    toast.success('Class deleted successfully');
+    try {
+      const response = await fetch(`/make-server-2fad19e1/teacher/classes/${encodeURIComponent(classId)}`, {
+        method: 'DELETE',
+        headers: { Authorization: ['Bearer', accessToken].join(' ') }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Delete failed (${response.status})`);
+      setClasses(prev => prev.filter(cls => cls.id !== classId));
+      toast.success('Class deleted successfully');
+    } catch (error: any) {
+      console.error('Error deleting class:', error);
+      toast.error(error.message || 'Failed to delete class');
+    }
   };
 
   const [selectedBatch, setSelectedBatch] = useState('All');
@@ -535,6 +551,7 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
             </div>
 
             <StudentsList 
+              accessToken={accessToken}
               onSelectStudent={(student) => {
                 setSelectedStudent(student);
                 // Route portal students to assign view
@@ -570,7 +587,13 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
             onBack={() => setActiveView('students')}
             accessToken={accessToken}
             projectId={projectId}
-            onUpdate={() => setActiveView('dashboard')}
+            isTeacherEditing
+            onUpdate={(updatedStudent: any) => {
+              setStudents(prev => prev.map(student =>
+                student.id === selectedStudent.id ? { ...student, ...updatedStudent } : student
+              ));
+              setActiveView('dashboard');
+            }}
           />
         );
       case 'assign-student':
@@ -625,6 +648,7 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
           <AddQuiz
             classData={selectedClass}
             students={allStudents}
+            accessToken={accessToken}
             onBack={() => setActiveView('class-view')}
             onAddQuiz={handleAddTask}
           />
@@ -667,7 +691,7 @@ export function AdminDashboard({ currentUser: initialUser, onLogout, accessToken
       case 'marks':
         return <MarksManagement students={allStudents} classes={classes} accessToken={accessToken} projectId={projectId} />;
       case 'settings':
-        return <Settings currentUser={currentUser} onUpdateProfile={handleUpdateProfile} />;
+        return <Settings currentUser={currentUser} accessToken={accessToken} onLogout={onLogout} onUpdateProfile={handleUpdateProfile} />;
       case 'debug':
         return <DebugPanel accessToken={accessToken} />;
       default:

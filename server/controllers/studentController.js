@@ -11,10 +11,11 @@ const getProfile = async (req, res) => {
     const profile = (await kvGet(`student_profile:${user.email}`)) || {};
     return res.json({
       student: {
+        ...profile,
         id: user.id,
-        name,
+        name: profile.name || name,
         email: user.email,
-        avatar: name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+        avatar: (profile.name || name).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
         role: 'student',
         username: profile.username || meta.username || '',
         rollNumber: profile.rollNumber || meta.rollNumber || '',
@@ -43,7 +44,9 @@ const getData = async (req, res) => {
       const hasGrade = gradesList.some(g => g.taskId === task.id || g.task_id === task.id);
       return { ...task, completed: task.completed || hasGrade, grade: gradesList.find(g => g.taskId === task.id || g.task_id === task.id)?.grade };
     });
-    return res.json({ tasks: tasksWithCompletion, grades: gradesList, streakData, assignedClass: null, adminMessage: null });
+    const profile = (await kvGet(`student_profile:${user.email}`)) || {};
+    const assignedClass = profile.classId ? { id: profile.classId, name: profile.className || '' } : null;
+    return res.json({ tasks: tasksWithCompletion, grades: gradesList, streakData, assignedClass, adminMessage: profile.adminMessage || null });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -55,7 +58,8 @@ const getDashboard = async (req, res) => {
     const tasks = (await kvGet(`student_tasks:${user.email}`)) || [];
     const streak = (await kvGet(`student_streak:${user.email}`)) || { currentStreak: 0, dates: [] };
     const profile = (await kvGet(`student_profile:${user.email}`)) || { totalPoints: 0, currentLevel: 1 };
-    return res.json({ tasks, streak, quest: null, profile });
+    const pendingTasks = Array.isArray(tasks) ? tasks.filter(task => !task.completed) : [];
+    return res.json({ tasks, streak, quest: pendingTasks[0] || null, profile });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -88,10 +92,28 @@ const markNotificationRead = async (req, res) => {
 const updateProfile = async (req, res) => {
   try {
     const user = req.user;
+    if (user.user_metadata?.role !== 'student') {
+      return res.status(403).json({ error: 'Only student accounts can update this profile' });
+    }
     const profileKey = `student_profile:${user.email}`;
     const existing = (await kvGet(profileKey)) || {};
-    await kvSet(profileKey, { ...existing, ...req.body, email: user.email });
-    return res.json({ success: true });
+    const allowedFields = [
+      'name', 'username', 'rollNumber', 'batch', 'phone', 'department', 'semester',
+      'specialization', 'qualification', 'joinDate', 'address', 'bio',
+    ];
+    const profileUpdates = Object.fromEntries(
+      allowedFields.filter(field => req.body[field] !== undefined).map(field => [field, req.body[field]])
+    );
+    const updatedProfile = { ...existing, ...profileUpdates, email: user.email };
+    await kvSet(profileKey, updatedProfile);
+    if (profileUpdates.name) {
+      const supabase = getSupabaseClient(true);
+      const { error } = await supabase.auth.admin.updateUserById(user.id, {
+        user_metadata: { ...user.user_metadata, name: profileUpdates.name },
+      });
+      if (error) throw error;
+    }
+    return res.json({ success: true, profile: updatedProfile });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

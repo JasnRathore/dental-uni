@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 interface EditTaskProps {
   task: any;
   onBack: () => void;
-  onSave: (updatedTask: any) => void;
+  onSave: (updatedTask: any) => Promise<void>;
 }
 
 export function EditTask({ task, onBack, onSave }: EditTaskProps) {
@@ -66,7 +66,7 @@ export function EditTask({ task, onBack, onSave }: EditTaskProps) {
     ));
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
     // Validation
@@ -95,13 +95,14 @@ export function EditTask({ task, onBack, onSave }: EditTaskProps) {
       ...task,
       ...taskData,
       totalPoints: parseInt(taskData.totalPoints),
+      maxPoints: parseInt(taskData.totalPoints),
+      points: parseInt(taskData.totalPoints),
       duration: isQuiz ? parseInt(taskData.duration) : undefined,
       questions: isQuiz ? questions : undefined,
       updatedAt: new Date().toISOString()
     };
 
-    onSave(updatedTask);
-    toast.success(`${isQuiz ? 'Quiz' : 'Task'} updated successfully`);
+    await onSave(updatedTask);
   };
 
   return (

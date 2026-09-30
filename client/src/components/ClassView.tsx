@@ -75,7 +75,6 @@ export function ClassView({ classData, students, onBack, onAddTask, onAddQuiz, a
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [isGradeDialogOpen, setIsGradeDialogOpen] = useState(false);
   const [studentAttemptedTasks, setStudentAttemptedTasks] = useState<any[]>([]);
-  const [allTasks, setAllTasks] = useState<any[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [studentsWithData, setStudentsWithData] = useState<any[]>([]);
   const [isLoadingStudentData, setIsLoadingStudentData] = useState(false);
@@ -170,98 +169,6 @@ export function ClassView({ classData, students, onBack, onAddTask, onAddQuiz, a
   // Use studentsWithData instead of enrolledStudents for display
   const displayStudents = studentsWithData.length > 0 ? studentsWithData : enrolledStudents;
 
-  // Load all tasks from localStorage
-  useEffect(() => {
-    console.log('=== LOADING TASKS FOR CLASS ===');
-    console.log('Class ID:', classData.id);
-    console.log('Class Name:', classData.name);
-    
-    // Load tasks from backend via AdminDashboard's tasks state
-    // The tasks are already loaded and filtered, so we'll use them directly
-    
-    console.log('=== END LOADING TASKS ===');
-  }, [classData.id]);
-
-  // Function to sync/assign tasks to all enrolled students
-  const syncTasksToStudents = (classTasks) => {
-    console.log('=== SYNCING TASKS TO STUDENTS ===');
-    
-    let totalAssignments = 0;
-    
-    enrolledStudents.forEach(student => {
-      const studentTasksKey = `student_tasks:${student.email}`;
-      const existingTasksStr = localStorage.getItem(studentTasksKey);
-      const existingTasks = existingTasksStr ? JSON.parse(existingTasksStr) : [];
-      
-      console.log(`Student: ${student.name} (${student.email})`);
-      console.log(`  Existing tasks: ${existingTasks.length}`);
-      
-      // Get IDs of tasks student already has
-      const existingTaskIds = existingTasks.map(t => t.id);
-      
-      // Find tasks that need to be assigned
-      const tasksToAssign = classTasks.filter(task => !existingTaskIds.includes(task.id));
-      
-      if (tasksToAssign.length > 0) {
-        console.log(`  Assigning ${tasksToAssign.length} new task(s)`);
-        
-        // Add new tasks to student's list
-        tasksToAssign.forEach(task => {
-          existingTasks.push({
-            ...task,
-            completed: false,
-            started: false,
-            submittedAt: null
-          });
-          totalAssignments++;
-        });
-        
-        // Save updated task list
-        localStorage.setItem(studentTasksKey, JSON.stringify(existingTasks));
-        console.log(`  Saved ${existingTasks.length} total tasks for ${student.email}`);
-      } else {
-        console.log(`  No new tasks to assign`);
-      }
-    });
-    
-    if (totalAssignments > 0) {
-      console.log(`✅ Synced ${totalAssignments} task assignment(s) to students`);
-      toast.success(`Synced ${totalAssignments} task(s) to students in this class`);
-    }
-    
-    console.log('=== END SYNC ===');
-  };
-
-  // Function to get attempted tasks for a student
-  const getStudentAttemptedTasks = (student) => {
-    if (!student || !student.email) return [];
-    
-    // Get student tasks from localStorage (this would come from backend)
-    const studentTasksKey = `student_tasks:${student.email}`;
-    const studentTasksStr = localStorage.getItem(studentTasksKey);
-    
-    console.log('Looking for tasks for student:', student.email);
-    console.log('Student tasks key:', studentTasksKey);
-    console.log('Found tasks:', studentTasksStr);
-    
-    if (!studentTasksStr) {
-      console.log('No tasks found in localStorage for this student');
-      return [];
-    }
-    
-    try {
-      const studentTasks = JSON.parse(studentTasksStr);
-      console.log('Parsed student tasks:', studentTasks);
-      
-      // Show ALL tasks assigned to the student, not just attempted ones
-      // Teacher should be able to grade any assigned task (including giving failing grades for non-attempts)
-      return studentTasks || [];
-    } catch (e) {
-      console.error('Error parsing student tasks:', e);
-      return [];
-    }
-  };
-
   const handleGradeDialogOpen = async (student) => {
     setSelectedStudent(student);
     setIsLoadingTasks(true);
@@ -340,36 +247,32 @@ export function ClassView({ classData, students, onBack, onAddTask, onAddQuiz, a
     }
   };
 
-  const handleAddGrade = () => {
+  const handleAddGrade = async () => {
     if (!newGrade.taskId || !newGrade.grade) {
       toast.error('Please select a task/quiz and assign a grade');
       return;
     }
 
-    // Get existing grades
-    const savedGrades = localStorage.getItem('dental_college_grades');
-    const grades = savedGrades ? JSON.parse(savedGrades) : [];
-
-    // Create new grade entry
-    const grade = {
-      id: Date.now(),
-      studentId: selectedStudent.id,
-      studentName: selectedStudent.name,
-      studentEmail: selectedStudent.email,
-      classId: classData.id,
-      className: classData.name,
-      subject: newGrade.subject,
-      assignment: newGrade.assignment,
-      taskId: newGrade.taskId,
-      score: parseFloat(newGrade.grade),
-      maxScore: 100,
-      date: newGrade.date,
-      feedback: newGrade.feedback
-    };
-
-    // Save grade
-    grades.push(grade);
-    localStorage.setItem('dental_college_grades', JSON.stringify(grades));
+    try {
+      const response = await fetch('/make-server-2fad19e1/teacher/task-grade', {
+        method: 'POST',
+        headers: {
+          Authorization: ['Bearer', accessToken].join(' '),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          taskId: newGrade.taskId,
+          studentEmail: selectedStudent.email,
+          grade: Number(newGrade.grade),
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Grade save failed (${response.status})`);
+    } catch (error: any) {
+      console.error('Error saving grade:', error);
+      toast.error(error.message || 'Failed to save grade');
+      return;
+    }
 
     // Reset form
     setNewGrade({

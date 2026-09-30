@@ -27,27 +27,30 @@ import {
   Settings as SettingsIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '../utils/supabase/client';
 
 interface SettingsProps {
   currentUser: any;
-  onUpdateProfile: (profile: any) => void;
+  accessToken: string;
+  onUpdateProfile: (profile: any) => Promise<void>;
+  onLogout: () => void;
 }
 
-export function Settings({ currentUser, onUpdateProfile }: SettingsProps) {
+export function Settings({ currentUser, accessToken, onUpdateProfile, onLogout }: SettingsProps) {
   const [profileData, setProfileData] = useState({
-    name: currentUser.name || 'Dr. Rajesh Mehta',
-    email: currentUser.email || 'rajesh.mehta@dentalcollege.edu',
-    phone: '+91 98765 43210',
-    department: 'Oral Pathology',
-    specialization: 'Oral Medicine and Radiology',
-    qualification: 'BDS, MDS, PhD',
-    experience: '15 years',
-    bio: 'Passionate about dental education and clinical excellence. Specialized in oral pathology with extensive research experience.',
-    address: 'Dental College Campus, Mumbai, Maharashtra',
-    joinDate: 'January 2010'
+    name: currentUser.name || '',
+    email: currentUser.email || '',
+    phone: currentUser.phone || '',
+    department: currentUser.department || '',
+    specialization: currentUser.specialization || '',
+    qualification: currentUser.qualification || '',
+    experience: currentUser.experience || '',
+    bio: currentUser.bio || '',
+    address: currentUser.address || '',
+    joinDate: currentUser.joinDate || ''
   });
 
-  const [notifications, setNotifications] = useState({
+  const [notifications, setNotifications] = useState(currentUser.notifications || {
     emailNotifications: true,
     pushNotifications: true,
     studentUpdates: true,
@@ -57,7 +60,7 @@ export function Settings({ currentUser, onUpdateProfile }: SettingsProps) {
     marketingEmails: false
   });
 
-  const [preferences, setPreferences] = useState({
+  const [preferences, setPreferences] = useState(currentUser.preferences || {
     theme: 'light',
     language: 'english',
     dateFormat: 'DD/MM/YYYY',
@@ -76,22 +79,34 @@ export function Settings({ currentUser, onUpdateProfile }: SettingsProps) {
     confirmPassword: ''
   });
 
-  const handleProfileUpdate = () => {
-    toast.success('Profile updated successfully!');
-    if (onUpdateProfile) {
-      onUpdateProfile(profileData);
+  const handleProfileUpdate = async () => {
+    try {
+      await onUpdateProfile(profileData);
+      toast.success('Profile updated successfully!');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update profile');
     }
   };
 
-  const handleNotificationUpdate = () => {
-    toast.success('Notification preferences updated!');
+  const handleNotificationUpdate = async () => {
+    try {
+      await onUpdateProfile({ notifications });
+      toast.success('Notification preferences updated!');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save notification preferences');
+    }
   };
 
-  const handlePreferencesUpdate = () => {
-    toast.success('Preferences updated successfully!');
+  const handlePreferencesUpdate = async () => {
+    try {
+      await onUpdateProfile({ preferences });
+      toast.success('Preferences updated successfully!');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save preferences');
+    }
   };
 
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast.error('New passwords do not match!');
       return;
@@ -100,12 +115,54 @@ export function Settings({ currentUser, onUpdateProfile }: SettingsProps) {
       toast.error('Password must be at least 8 characters long!');
       return;
     }
-    toast.success('Password changed successfully!');
-    setPasswordData({
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: ''
-    });
+    try {
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: currentUser.email,
+        password: passwordData.currentPassword,
+      });
+      if (verifyError) throw new Error('Current password is incorrect');
+      const { error } = await supabase.auth.updateUser({ password: passwordData.newPassword });
+      if (error) throw error;
+      toast.success('Password changed successfully!');
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } catch (error: any) {
+      console.error('Password update failed:', error);
+      toast.error(error.message || 'Failed to change password');
+    }
+  };
+
+  const handleDeactivateAccount = async () => {
+    if (!window.confirm('Deactivate your account? You will be signed out and can reactivate it the next time you sign in.')) return;
+    try {
+      const response = await fetch('/make-server-2fad19e1/teacher/account/deactivate', {
+        method: 'POST',
+        headers: { Authorization: ['Bearer', accessToken].join(' ') }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Deactivation failed (${response.status})`);
+      toast.success('Account deactivated');
+      onLogout();
+    } catch (error: any) {
+      console.error('Account deactivation failed:', error);
+      toast.error(error.message || 'Failed to deactivate account');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('Permanently delete your teacher account and its classes, tasks, grades, and student assignments? Student login accounts will remain. This cannot be undone.')) return;
+    try {
+      const response = await fetch('/make-server-2fad19e1/teacher/account', {
+        method: 'DELETE',
+        headers: { Authorization: ['Bearer', accessToken].join(' ') }
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Account deletion failed (${response.status})`);
+      toast.success('Account and teacher data deleted');
+      onLogout();
+    } catch (error: any) {
+      console.error('Account deletion failed:', error);
+      toast.error(error.message || 'Failed to delete account');
+    }
   };
 
   return (
@@ -197,8 +254,8 @@ export function Settings({ currentUser, onUpdateProfile }: SettingsProps) {
                       id="email"
                       type="email"
                       value={profileData.email}
-                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                      className="pl-10"
+                      disabled
+                      className="pl-10 bg-gray-100"
                     />
                   </div>
                 </div>
@@ -653,7 +710,7 @@ export function Settings({ currentUser, onUpdateProfile }: SettingsProps) {
                     Temporarily disable your account. You can reactivate it later.
                   </p>
                 </div>
-                <Button variant="outline" className="border-red-300 text-red-600 hover:bg-red-50">
+                <Button onClick={handleDeactivateAccount} variant="outline" className="border-red-300 text-red-600 hover:bg-red-50">
                   Deactivate
                 </Button>
               </div>
@@ -665,7 +722,7 @@ export function Settings({ currentUser, onUpdateProfile }: SettingsProps) {
                     Permanently delete your account and all associated data.
                   </p>
                 </div>
-                <Button variant="destructive" className="bg-red-600 hover:bg-red-700">
+                <Button onClick={handleDeleteAccount} variant="destructive" className="bg-red-600 hover:bg-red-700">
                   Delete
                 </Button>
               </div>

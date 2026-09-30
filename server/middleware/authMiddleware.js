@@ -13,6 +13,9 @@ const requireAuth = async (req, res, next) => {
   try {
     const user = await getUser(req.headers.authorization);
     if (!user) return res.status(401).json({ error: 'Unauthorized' });
+    if (user.app_metadata?.accountDisabled) {
+      return res.status(403).json({ error: 'This account has been deactivated' });
+    }
     req.user = user;
     next();
   } catch (err) {
@@ -20,7 +23,23 @@ const requireAuth = async (req, res, next) => {
   }
 };
 
+const requireTeacher = (req, res, next) => {
+  if (req.user?.user_metadata?.role === 'student') {
+    return res.status(403).json({ error: 'Teacher access required' });
+  }
+  return next();
+};
+
+const requireStudent = (req, res, next) => {
+  if (req.user?.user_metadata?.role !== 'student') {
+    return res.status(403).json({ error: 'Student access required' });
+  }
+  return next();
+};
+
 module.exports = {
   getUser,
-  requireAuth
+  requireAuth,
+  requireTeacher,
+  requireStudent
 };

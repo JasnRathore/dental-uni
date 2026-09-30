@@ -129,17 +129,7 @@ app.get("/make-server-2fad19e1/teacher/data", async (c) => {
 
     const students = (await kvGet(`students:${user.id}`)) || [];
 
-    // Fetch all classes from all teachers to make them shared
-    const allClassesEntries = await kvGetByPrefix("classes:");
-    const classesMap = new Map();
-    for (const entry of allClassesEntries) {
-      if (Array.isArray(entry.value)) {
-        entry.value.forEach((cls: any) => {
-          classesMap.set(cls.id, cls);
-        });
-      }
-    }
-    const classes = Array.from(classesMap.values());
+    const classes = (await kvGet(`classes:${user.id}`)) || [];
 
     const tasks = (await kvGet(`tasks:${user.id}`)) || [];
     const grades = (await kvGet(`dental_college_grades:${user.id}`)) || [];
@@ -490,8 +480,14 @@ app.get("/make-server-2fad19e1/teacher/all-students", async (c) => {
     const { data: { user }, error } = await supabase.auth.getUser(accessToken);
     if (error || !user) return c.json({ error: "Unauthorized" }, 401);
 
-    const { data: authUsers } = await supabase.auth.admin.listUsers();
-    const students = authUsers?.users?.filter((u: any) => u.user_metadata?.role === "student") || [];
+    const authUsers: any[] = [];
+    for (let page = 1; ; page += 1) {
+      const { data, error: listError } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+      if (listError) throw listError;
+      authUsers.push(...(data?.users || []));
+      if (!data?.users || data.users.length < 1000) break;
+    }
+    const students = authUsers.filter((u: any) => u.user_metadata?.role === "student");
 
     const profileEntries = await kvGetByPrefix("student_profile:");
     const profileMap = new Map();
@@ -508,7 +504,7 @@ app.get("/make-server-2fad19e1/teacher/all-students", async (c) => {
 
     const result = students.map((u: any) => {
       const profile = profileMap.get(u.email) || {};
-      const name = u.user_metadata?.name || u.email?.split("@")[0] || "Student";
+      const name = profile.name || u.user_metadata?.name || u.email?.split("@")[0] || "Student";
       return {
         id: u.id,
         name,
@@ -529,7 +525,7 @@ app.get("/make-server-2fad19e1/teacher/all-students", async (c) => {
       };
     });
 
-    return c.json(result);
+    return c.json({ students: result });
   } catch (error) {
     console.log("All students error:", error);
     return c.json({ error: error.message }, 500);

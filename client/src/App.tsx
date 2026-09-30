@@ -6,6 +6,7 @@ import { StudentApp } from './StudentApp';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import { supabase } from './utils/supabase/client';
+import { reactivateIfNeeded } from './services/account';
 import { projectId, publicAnonKey } from './utils/supabase/info';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
@@ -29,6 +30,7 @@ export default function App() {
       const { data: { session }, error } = await supabase.auth.getSession();
       
       if (session && session.access_token) {
+        if (!(await reactivateIfNeeded(session))) return;
         // Check role from metadata first
         const userRole = session.user?.user_metadata?.role;
         console.log('Existing session found, user role:', userRole);
@@ -92,6 +94,7 @@ export default function App() {
       console.log('Login successful, checking if user is a teacher...');
 
       if (data.session) {
+        if (!(await reactivateIfNeeded(data.session))) throw new Error('Account reactivation cancelled');
         // Check the user's role from metadata
         const userRole = data.session.user?.user_metadata?.role;
         console.log('User role from metadata:', userRole);

@@ -52,41 +52,27 @@ export function QuestDialog({
     setLoading(true);
 
     try {
-      const newTask = {
-        id: `task-${Date.now()}`,
-        classId: selectedClass,
-        title: questTitle,
-        description: questDescription,
-        maxPoints: parseInt(questPoints) || 50,
-        dueDate: new Date().toISOString().split("T")[0],
-        createdAt: new Date().toISOString(),
-        status: "active",
-        type: "task",
-      };
-
-      const enrolledStudents =
-        classes.find((c: any) => c.id === selectedClass)?.students || [];
-
-      enrolledStudents.forEach((student: any) => {
-        const studentTasksKey = `student_tasks:${student.email}`;
-
-        const existingTasks = JSON.parse(
-          localStorage.getItem(studentTasksKey) || "[]",
-        );
-
-        const studentTask = {
-          ...newTask,
-          completed: false,
-          started: false,
-          submittedAt: null,
-        };
-
-        existingTasks.push(studentTask);
-
-        localStorage.setItem(studentTasksKey, JSON.stringify(existingTasks));
+      const selectedClassData = classes.find((item: any) => item.id === selectedClass);
+      const response = await fetch("/make-server-2fad19e1/teacher/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: ["Bearer", accessToken].join(" "),
+        },
+        body: JSON.stringify({
+          classId: selectedClass,
+          className: selectedClassData?.name || "",
+          title: questTitle,
+          description: questDescription,
+          maxPoints: parseInt(questPoints, 10) || 50,
+          dueDate: new Date().toISOString().split("T")[0],
+          status: "active",
+          type: "task",
+        }),
       });
-
-      toast.success("Quest assigned to students!");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Quest creation failed (${response.status})`);
+      toast.success(`Quest assigned to ${data.assignedCount || 0} student(s)!`);
 
       setQuestTitle("");
       setQuestDescription("");
