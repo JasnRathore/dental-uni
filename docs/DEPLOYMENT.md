@@ -1,6 +1,6 @@
 # Deploying to Vercel with Supabase
 
-This repository contains a Vite/React frontend and an Express API. Supabase provides authentication and the database. The instructions below describe the required deployment wiring; no application or Vercel configuration files have been changed as part of this guide.
+This repository contains a Vite/React frontend and an Express API. Supabase provides authentication and the database. The Vercel build settings, API function, and rewrites are configured in the repository.
 
 ## 1. Set up the Supabase project
 
@@ -36,57 +36,15 @@ In **Authentication → URL Configuration**, set the Site URL to the production 
 
 ## 2. Wire the Express API for Vercel
 
-The repository's current `vercel.json` does not match the package scripts/output directory, and it rewrites API requests to `/api/index` even though there is no `api` function. Before deployment, update the Vercel wiring as follows.
+The root `vercel.json` defines two Vercel services: `client` (Vite, rooted at `client`) and `server` (Express, rooted at `server`). Requests under `/make-server-2fad19e1/...` and `/health` route to the Express service; all remaining paths route to the Vite client for the app and its SPA routes. The service names and public paths must match the package layout and route prefixes used by the code.
 
-Set the build command to `npm run build:client` and the output directory to `client/build`. The root `package.json` has no `build` script, and Vite writes the client build to `client/build`.
-
-Add a catch-all Vercel Node function at `api/[...slug].js` so the existing Express routes can run as a serverless function:
-
-```js
-const app = require('../server/app');
-
-module.exports = (req, res) => {
-  if (req.url && req.url.startsWith('/api/')) {
-    req.url = req.url.slice(4);
-  } else if (req.url === '/api') {
-    req.url = '/';
-  }
-
-  return app(req, res);
-};
-```
-
-Update the API rewrites in `vercel.json` to route the existing API prefix and health check through that function, while keeping the SPA fallback last:
-
-```json
-{
-  "buildCommand": "npm run build:client",
-  "outputDirectory": "client/build",
-  "rewrites": [
-    {
-      "source": "/make-server-2fad19e1/:path*",
-      "destination": "/api/make-server-2fad19e1/:path*"
-    },
-    {
-      "source": "/health",
-      "destination": "/api/health"
-    },
-    {
-      "source": "/((?!api/).*)",
-      "destination": "/index.html"
-    }
-  ]
-}
-```
-
-The `/api/...` URL prefix is removed by the function before the request reaches Express, preserving the routes mounted in `server/app.js`. Existing frontend requests use `/make-server-2fad19e1/...`, so keep this prefix consistent in the Vercel rewrite.
+The browser calls the backend through same-domain URLs under `/make-server-2fad19e1/...`; top-level rewrites route those requests to the server service. No service binding is required because neither service makes a server-side request to the other. The Vite dev server's `localhost:3001` proxy is only for local development.
 
 ## 3. Deploy the repository
 
 1. Push the repository to GitHub and import it into Vercel.
-2. Set the Vercel project's **Root Directory** to the repository root, not `client`.
-3. Use `npm install` as the install command, `npm run build:client` as the build command, and `client/build` as the output directory. The latter two should also be read from the updated `vercel.json`.
-4. Add these Vercel environment variables for Production and any Preview/Development environments that need to access Supabase:
+2. Keep the Vercel project's **Root Directory** at the repository root so it can read `vercel.json` and both service roots.
+3. Configure these environment variables for the `server` service in Production and any Preview/Development environments that need to access Supabase:
 
    | Variable | Value |
    | --- | --- |
@@ -96,6 +54,8 @@ The `/api/...` URL prefix is removed by the function before the request reaches 
 
    Do not use a `VITE_` prefix for the service-role key. Vite-prefixed variables are exposed to browser code.
 5. Deploy, then check `https://<your-vercel-domain>/health`. It should return `{"status":"ok"}`.
+
+Use `vercel dev` to run both services together locally when testing Vercel service routing.
 
 ## 4. Run locally
 
