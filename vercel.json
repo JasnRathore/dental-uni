@@ -3,7 +3,8 @@
   "services": {
     "client": {
       "root": "client",
-      "framework": "vite"
+      "framework": "vite",
+      "outputDirectory": "build"
     },
     "server": {
       "root": "server",
