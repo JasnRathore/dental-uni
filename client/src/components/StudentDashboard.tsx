@@ -90,6 +90,8 @@ export function StudentDashboard({
   const [tasks, setTasks] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
+  const [leaderboardClassName, setLeaderboardClassName] = useState<string | null>(student?.className || null);
+  const [isAssignedToLeaderboardClass, setIsAssignedToLeaderboardClass] = useState(Boolean(student?.classId));
   const [assignedClass, setAssignedClass] = useState<any>(null);
   const [selectedQuiz, setSelectedQuiz] = useState<any>(null);
   const [activeView, setActiveView] = useState("dashboard");
@@ -140,6 +142,8 @@ export function StudentDashboard({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to load leaderboard");
       setLeaderboard(data.leaderboard || []);
+      setLeaderboardClassName(data.className || null);
+      setIsAssignedToLeaderboardClass(Boolean(data.isAssigned));
     } catch (error) {
       console.error("Error loading leaderboard:", error);
       toast.error("Failed to load leaderboard");
@@ -1079,8 +1083,9 @@ export function StudentDashboard({
                         STUDENT LEADERBOARD
                       </h2>
                       <p className="text-gray-500 font-medium">
-                        Students are ranked by total EXP earned from assignments
-                        and quizzes.
+                        {leaderboardClassName
+                          ? `Class: ${leaderboardClassName}. Students are ranked by total EXP earned from assignments and quizzes.`
+                          : "Classmates are ranked by total EXP earned from assignments and quizzes."}
                       </p>
                     </div>
 
@@ -1093,7 +1098,9 @@ export function StudentDashboard({
                             </div>
                           ) : leaderboard.length === 0 ? (
                             <div className="py-16 text-center text-gray-500 font-medium">
-                              No students are on the leaderboard yet.
+                              {isAssignedToLeaderboardClass
+                                ? "No students are on your class leaderboard yet."
+                                : "You need to be assigned to a class to see its leaderboard."}
                             </div>
                           ) : (
                             <div className="overflow-x-auto">

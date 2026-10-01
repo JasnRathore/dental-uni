@@ -67,6 +67,16 @@ const getDashboard = async (req, res) => {
 
 const getLeaderboard = async (req, res) => {
   try {
+    const currentProfile = (await kvGet(`student_profile:${req.user.email}`)) || {};
+    const classId = currentProfile.classId || null;
+    const currentMetadata = req.user.user_metadata || {};
+    const className = currentProfile.className || currentMetadata.class ||
+      currentProfile.batch || currentMetadata.batch || null;
+    const normalizeClassName = value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    if (!classId && !className) {
+      return res.json({ leaderboard: [], classId: null, className, isAssigned: false });
+    }
+
     const supabase = getSupabaseClient(true);
     const users = [];
     for (let page = 1; ; page += 1) {
@@ -101,6 +111,12 @@ const getLeaderboard = async (req, res) => {
         const emailKey = user.email.toLowerCase();
         const profile = profilesByEmail.get(emailKey) || {};
         const metadata = user.user_metadata || {};
+        const studentClassId = profile.classId || null;
+        const studentClassName = profile.className || metadata.class || profile.batch || metadata.batch || null;
+        const isInClass = classId && studentClassId
+          ? String(studentClassId) === String(classId)
+          : normalizeClassName(studentClassName) === normalizeClassName(className);
+        if (!isInClass) return null;
         const name = profile.name || metadata.name || user.email.split('@')[0] || 'Student';
         const totalEXP = (gradesByEmail.get(emailKey) || []).reduce((total, grade) => {
           if (grade.score != null && grade.maxScore != null && grade.maxScore > 0) {
@@ -119,10 +135,11 @@ const getLeaderboard = async (req, res) => {
           isCurrentStudent: user.id === req.user.id,
         };
       })
+      .filter(Boolean)
       .sort((a, b) => b.xp - a.xp || a.name.localeCompare(b.name))
       .map((entry, index) => ({ ...entry, rank: index + 1 }));
 
-    return res.json({ leaderboard });
+    return res.json({ leaderboard, classId, className, isAssigned: true });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
