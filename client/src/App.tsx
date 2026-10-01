@@ -35,10 +35,9 @@ export default function App() {
         const userRole = session.user?.user_metadata?.role;
         console.log('Existing session found, user role:', userRole);
 
-        // If there's a student in the admin portal, sign them out
+        // Restore student sessions in the student portal after a page reload.
         if (userRole === 'student') {
-          console.log('Student session detected in admin portal - clearing session');
-          await supabase.auth.signOut();
+          setPortalMode('student');
           setIsLoading(false);
           return;
         }

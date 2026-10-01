@@ -1,4 +1,4 @@
-const { kvGet, kvSet, getSupabaseClient } = require('../../database/services/dbService');
+const { kvGet, kvSet, kvGetByPrefix, getSupabaseClient } = require('../../database/services/dbService');
 const { trackStudentActivity } = require('../services/studentService');
 
 const getProfile = async (req, res) => {
@@ -60,6 +60,69 @@ const getDashboard = async (req, res) => {
     const profile = (await kvGet(`student_profile:${user.email}`)) || { totalPoints: 0, currentLevel: 1 };
     const pendingTasks = Array.isArray(tasks) ? tasks.filter(task => !task.completed) : [];
     return res.json({ tasks, streak, quest: pendingTasks[0] || null, profile });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+const getLeaderboard = async (req, res) => {
+  try {
+    const supabase = getSupabaseClient(true);
+    const users = [];
+    for (let page = 1; ; page += 1) {
+      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error) throw error;
+      users.push(...(data?.users || []));
+      if (!data?.users || data.users.length < 1000) break;
+    }
+
+    const [profileEntries, gradeEntries] = await Promise.all([
+      kvGetByPrefix('student_profile:'),
+      kvGetByPrefix('student_grades:'),
+    ]);
+    const profilesByEmail = new Map(
+      profileEntries
+        .filter(entry => entry.value?.email)
+        .map(entry => [entry.value.email.toLowerCase(), entry.value])
+    );
+    const gradesByEmail = new Map(
+      gradeEntries.map(entry => [
+        entry.key.slice('student_grades:'.length).toLowerCase(),
+        Array.isArray(entry.value) ? entry.value : [],
+      ])
+    );
+    const gradePoints = {
+      'A+': 100, A: 95, 'A-': 90, 'B+': 85, B: 80, 'B-': 75,
+      'C+': 70, C: 65, 'C-': 60, D: 50, F: 0,
+    };
+    const leaderboard = users
+      .filter(user => user.user_metadata?.role === 'student' && user.email)
+      .map(user => {
+        const emailKey = user.email.toLowerCase();
+        const profile = profilesByEmail.get(emailKey) || {};
+        const metadata = user.user_metadata || {};
+        const name = profile.name || metadata.name || user.email.split('@')[0] || 'Student';
+        const totalEXP = (gradesByEmail.get(emailKey) || []).reduce((total, grade) => {
+          if (grade.score != null && grade.maxScore != null && grade.maxScore > 0) {
+            const percentage = (grade.score / grade.maxScore) * 100;
+            const bonus = percentage >= 95 ? 15 : percentage >= 90 ? 10 : percentage >= 80 ? 5 : 0;
+            return total + Math.floor(percentage) + bonus;
+          }
+          if (grade.grade) return total + (gradePoints[grade.grade] || 0);
+          return total;
+        }, 0);
+        return {
+          id: user.id,
+          name,
+          xp: totalEXP,
+          level: Math.floor(totalEXP / 500) + 1,
+          isCurrentStudent: user.id === req.user.id,
+        };
+      })
+      .sort((a, b) => b.xp - a.xp || a.name.localeCompare(b.name))
+      .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
+    return res.json({ leaderboard });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -187,6 +250,7 @@ module.exports = {
   getProfile,
   getData,
   getDashboard,
+  getLeaderboard,
   getNotifications,
   markNotificationRead,
   updateProfile,

@@ -8,6 +8,7 @@ router.use(requireAuth, requireStudent);
 router.get('/profile', studentController.getProfile);
 router.get('/data', studentController.getData);
 router.get('/dashboard', studentController.getDashboard);
+router.get('/leaderboard', studentController.getLeaderboard);
 router.get('/notifications', studentController.getNotifications);
 router.post('/notifications/read', studentController.markNotificationRead);
 router.post('/profile/update', studentController.updateProfile);

@@ -88,6 +88,8 @@ export function StudentDashboard({
 }: StudentDashboardProps) {
   const [grades, setGrades] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
   const [assignedClass, setAssignedClass] = useState<any>(null);
   const [selectedQuiz, setSelectedQuiz] = useState<any>(null);
   const [activeView, setActiveView] = useState("dashboard");
@@ -124,6 +126,27 @@ export function StudentDashboard({
     checkDailyQuest();
     loadNotifications();
   }, []);
+
+  useEffect(() => {
+    if (activeView === "leaderboard") loadLeaderboard();
+  }, [activeView]);
+
+  const loadLeaderboard = async () => {
+    setIsLoadingLeaderboard(true);
+    try {
+      const response = await fetch(`/make-server-2fad19e1/student/leaderboard`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to load leaderboard");
+      setLeaderboard(data.leaderboard || []);
+    } catch (error) {
+      console.error("Error loading leaderboard:", error);
+      toast.error("Failed to load leaderboard");
+    } finally {
+      setIsLoadingLeaderboard(false);
+    }
+  };
 
   const loadStudentData = async () => {
     try {
@@ -1056,96 +1079,60 @@ export function StudentDashboard({
                         STUDENT LEADERBOARD
                       </h2>
                       <p className="text-gray-500 font-medium">
-                        Top performers across all dental departments. Rank is
-                        based on total EXP earned from assignments and quizzes.
+                        Students are ranked by total EXP earned from assignments
+                        and quizzes.
                       </p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-8">
-                      {/* Mock Leaderboard display - in real app, fetch from backend */}
-                      {[
-                        {
-                          rank: 2,
-                          name: "Dr. Aryan Sharma",
-                          xp: 4850,
-                          level: 12,
-                        },
-                        {
-                          rank: 1,
-                          name: student?.name,
-                          xp: stats.totalEXP,
-                          level: stats.level,
-                        },
-                        {
-                          rank: 3,
-                          name: "Dr. Isha Patel",
-                          xp: 4200,
-                          level: 10,
-                        },
-                      ]
-                        .sort((a, b) => a.rank - b.rank)
-                        .map((user, idx) => (
-                          <Card
-                            key={idx}
-                            className={`border-0 shadow-xl relative overflow-hidden ${
-                              user.name === student?.name
-                                ? "bg-gradient-to-br from-indigo-600 to-purple-700 text-white scale-110 z-10"
-                                : "bg-white"
-                            }`}
-                          >
-                            <CardContent className="p-8 text-center">
-                              <div
-                                className={`w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-6 text-2xl font-black italic ${
-                                  user.rank === 1
-                                    ? "bg-amber-100 text-amber-600"
-                                    : user.rank === 2
-                                      ? "bg-slate-100 text-slate-600"
-                                      : "bg-orange-50 text-orange-600"
-                                } ${user.name === student?.name ? "!bg-white/20 !text-white" : ""}`}
-                              >
-                                #{user.rank}
-                              </div>
-                              <Avatar className="w-20 h-20 border-4 border-white/20 shadow-xl mx-auto mb-4">
-                                <AvatarFallback className="bg-indigo-500 text-white text-xl font-bold">
-                                  {user.name?.slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <h4 className="text-xl font-black mb-1 truncate">
-                                {user.name}
-                              </h4>
-                              <p
-                                className={`text-xs font-bold uppercase tracking-widest mb-6 ${
-                                  user.name === student?.name
-                                    ? "text-indigo-100"
-                                    : "text-gray-400"
-                                }`}
-                              >
-                                LEVEL {user.level}
-                              </p>
-                              <div
-                                className={`p-4 rounded-2xl ${
-                                  user.name === student?.name
-                                    ? "bg-white/10"
-                                    : "bg-slate-50"
-                                }`}
-                              >
-                                <p
-                                  className={`text-[10px] font-black uppercase tracking-widest ${
-                                    user.name === student?.name
-                                      ? "text-indigo-100"
-                                      : "text-gray-400"
-                                  }`}
-                                >
-                                  Current EXP
-                                </p>
-                                <p className="text-2xl font-black italic">
-                                  {user.xp}{" "}
-                                  <span className="text-xs not-italic">XP</span>
-                                </p>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
+                    <div className="max-w-5xl mx-auto">
+                      <Card className="border-0 shadow-xl overflow-hidden">
+                        <CardContent className="p-0">
+                          {isLoadingLeaderboard ? (
+                            <div className="py-16 text-center text-gray-500 font-medium">
+                              Loading leaderboard...
+                            </div>
+                          ) : leaderboard.length === 0 ? (
+                            <div className="py-16 text-center text-gray-500 font-medium">
+                              No students are on the leaderboard yet.
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left">
+                                <thead className="bg-slate-50 text-xs uppercase tracking-wider text-gray-500">
+                                  <tr>
+                                    <th className="px-6 py-4">Rank</th>
+                                    <th className="px-6 py-4">Student</th>
+                                    <th className="px-6 py-4">Level</th>
+                                    <th className="px-6 py-4 text-right">EXP</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {leaderboard.map((entry) => (
+                                    <tr
+                                      key={entry.id}
+                                      className={entry.isCurrentStudent ? "bg-indigo-50 font-bold" : "hover:bg-slate-50"}
+                                    >
+                                      <td className="px-6 py-4 text-indigo-600">#{entry.rank}</td>
+                                      <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                          <Avatar className="h-9 w-9">
+                                            <AvatarFallback className="bg-indigo-100 text-indigo-700 font-bold">
+                                              {entry.name?.slice(0, 2).toUpperCase()}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                          <span>{entry.name}{entry.isCurrentStudent ? " (You)" : ""}</span>
+                                        </div>
+                                      </td>
+                                      <td className="px-6 py-4 text-gray-600">Level {entry.level}</td>
+                                      <td className="px-6 py-4 text-right text-indigo-700">{entry.xp} XP</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
                     </div>
                   </div>
                 )}
